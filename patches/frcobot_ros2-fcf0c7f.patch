@@ -1,0 +1,273 @@
+diff --git a/fairino3_v6_moveit2_config/config/fairino3_v6_robot.ros2_control.xacro b/fairino3_v6_moveit2_config/config/fairino3_v6_robot.ros2_control.xacro
+index a90b850..d5d933e 100644
+--- a/fairino3_v6_moveit2_config/config/fairino3_v6_robot.ros2_control.xacro
++++ b/fairino3_v6_moveit2_config/config/fairino3_v6_robot.ros2_control.xacro
+@@ -1,12 +1,18 @@
+ <?xml version="1.0"?>
+ <robot xmlns:xacro="http://www.ros.org/wiki/xacro">
+-    <xacro:macro name="fairino3_v6_robot_ros2_control" params="name initial_positions_file">
++    <xacro:macro name="fairino3_v6_robot_ros2_control" params="name initial_positions_file use_fake_hardware:=true controller_ip:=192.168.58.2">
+         <xacro:property name="initial_positions" value="${load_yaml(initial_positions_file)['initial_positions']}"/>
+ 
+         <ros2_control name="${name}" type="system">
+             <hardware>
+-                <!-- By default, set up controllers for simulation. This won't work on real hardware -->
+-                <plugin>mock_components/GenericSystem</plugin>
++                <!-- use_fake_hardware:=false 이면 실제 FAIRINO 컨트롤러(ServoJ)로 구동 -->
++                <xacro:if value="${use_fake_hardware}">
++                    <plugin>mock_components/GenericSystem</plugin>
++                </xacro:if>
++                <xacro:unless value="${use_fake_hardware}">
++                    <plugin>fairino_hardware/FairinoHardwareInterface</plugin>
++                    <param name="controller_ip">${controller_ip}</param>
++                </xacro:unless>
+             </hardware>
+             <joint name="j1">
+                 <command_interface name="position"/>
+diff --git a/fairino3_v6_moveit2_config/config/fairino3_v6_robot.urdf.xacro b/fairino3_v6_moveit2_config/config/fairino3_v6_robot.urdf.xacro
+index 8cae1e5..dd63212 100644
+--- a/fairino3_v6_moveit2_config/config/fairino3_v6_robot.urdf.xacro
++++ b/fairino3_v6_moveit2_config/config/fairino3_v6_robot.urdf.xacro
+@@ -1,6 +1,8 @@
+ <?xml version="1.0"?>
+ <robot xmlns:xacro="http://www.ros.org/wiki/xacro" name="fairino3_v6_robot">
+     <xacro:arg name="initial_positions_file" default="initial_positions.yaml" />
++    <xacro:arg name="use_fake_hardware" default="true" />
++    <xacro:arg name="controller_ip" default="192.168.58.2" />
+ 
+     <!-- Import fairino3_v6_robot urdf file -->
+     <xacro:include filename="$(find fairino_description)/urdf/fairino3_v6.urdf" />
+@@ -9,6 +11,6 @@
+     <xacro:include filename="fairino3_v6_robot.ros2_control.xacro" />
+ 
+ 
+-    <xacro:fairino3_v6_robot_ros2_control name="FakeSystem" initial_positions_file="$(arg initial_positions_file)"/>
++    <xacro:fairino3_v6_robot_ros2_control name="FakeSystem" initial_positions_file="$(arg initial_positions_file)" use_fake_hardware="$(arg use_fake_hardware)" controller_ip="$(arg controller_ip)"/>
+ 
+ </robot>
+diff --git a/fairino3_v6_moveit2_config/config/joint_limits.yaml b/fairino3_v6_moveit2_config/config/joint_limits.yaml
+index d08afc1..59c68a0 100644
+--- a/fairino3_v6_moveit2_config/config/joint_limits.yaml
++++ b/fairino3_v6_moveit2_config/config/joint_limits.yaml
+@@ -11,30 +11,30 @@ joint_limits:
+   j1:
+     has_velocity_limits: true
+     max_velocity: 3.1499999999999999
+-    has_acceleration_limits: false
+-    max_acceleration: 0
++    has_acceleration_limits: true
++    max_acceleration: 3.0
+   j2:
+     has_velocity_limits: true
+     max_velocity: 3.1499999999999999
+-    has_acceleration_limits: false
+-    max_acceleration: 0
++    has_acceleration_limits: true
++    max_acceleration: 3.0
+   j3:
+     has_velocity_limits: true
+     max_velocity: 3.1499999999999999
+-    has_acceleration_limits: false
+-    max_acceleration: 0
++    has_acceleration_limits: true
++    max_acceleration: 3.0
+   j4:
+     has_velocity_limits: true
+     max_velocity: 3.2000000000000002
+-    has_acceleration_limits: false
+-    max_acceleration: 0
++    has_acceleration_limits: true
++    max_acceleration: 3.0
+   j5:
+     has_velocity_limits: true
+     max_velocity: 3.2000000000000002
+-    has_acceleration_limits: false
+-    max_acceleration: 0
++    has_acceleration_limits: true
++    max_acceleration: 3.0
+   j6:
+     has_velocity_limits: true
+     max_velocity: 3.2000000000000002
+-    has_acceleration_limits: false
+-    max_acceleration: 0
+\ No newline at end of file
++    has_acceleration_limits: true
++    max_acceleration: 3.0
+\ No newline at end of file
+diff --git a/fairino3_v6_moveit2_config/config/ros2_controllers.yaml b/fairino3_v6_moveit2_config/config/ros2_controllers.yaml
+index f95e686..c9fe8fe 100644
+--- a/fairino3_v6_moveit2_config/config/ros2_controllers.yaml
++++ b/fairino3_v6_moveit2_config/config/ros2_controllers.yaml
+@@ -1,7 +1,7 @@
+ # This config file is used by ros2_control
+ controller_manager:
+   ros__parameters:
+-    update_rate: 100  # Hz
++    update_rate: 125  # Hz, FAIRINO ServoJ cmdT(0.008s)와 맞춤
+ 
+     fairino3_controller:
+       type: joint_trajectory_controller/JointTrajectoryController
+diff --git a/fairino_hardware_v3_8_2_11/CMakeLists.txt b/fairino_hardware_v3_8_2_11/CMakeLists.txt
+index 3e5845e..743b8b8 100644
+--- a/fairino_hardware_v3_8_2_11/CMakeLists.txt
++++ b/fairino_hardware_v3_8_2_11/CMakeLists.txt
+@@ -26,7 +26,7 @@ file(GLOB EXP_SRC_DIR ./examples/src/*.cpp)
+ 
+ #compile
+ file(CREATE_LINK 
+-"${CMAKE_CURRENT_SOURCE_DIR}/libfairino/lib/libfairino.so.2.2.2"
++"${CMAKE_CURRENT_SOURCE_DIR}/libfairino/lib/libfairino.so.2.2.6"
+ "${CMAKE_CURRENT_SOURCE_DIR}/libfairino/lib/libfairino.so.2"
+ SYMBOLIC)
+ 
+@@ -35,8 +35,12 @@ file(CREATE_LINK
+ "${CMAKE_CURRENT_SOURCE_DIR}/libfairino/lib/libfairino.so"
+ SYMBOLIC)
+ 
++# SDK 2.2.6(컨트롤러 3.8.6)에는 command_server가 쓰는 일부 API가 없어 기본 비활성화
++option(BUILD_CMD_SERVER "Build ros2_cmd_server and srv_test_client" OFF)
++if(BUILD_CMD_SERVER)
+ add_executable(ros2_cmd_server ${SRC_DIR})
+ add_executable(srv_test_client ${EXP_SRC_DIR})
++endif()
+ add_library(
+   fairino_hardware 
+   SHARED 
+@@ -48,11 +52,13 @@ add_library(
+ 
+ 
+ #add headfile source
++if(BUILD_CMD_SERVER)
+ target_include_directories(ros2_cmd_server PUBLIC 
+ ${CMAKE_CURRENT_SOURCE_DIR}/include/ 
+ ${CMAKE_CURRENT_SOURCE_DIR}/)
+ 
+ target_include_directories(srv_test_client PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/examples/include)
++endif()
+ target_include_directories(fairino_hardware PUBLIC 
+ $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
+ $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/>
+@@ -60,14 +66,18 @@ $<INSTALL_INTERFACE:include/fairino_hardware>
+ )
+ # target_link_libraries(ros2_cmd_server ${CMAKE_CURRENT_SOURCE_DIR}/libfairino/lib/libfairino.so)
+ # target_link_libraries(fairino_hardware ${CMAKE_CURRENT_SOURCE_DIR}/libfairino/lib/libfairino.so)
+-# target_link_libraries(ros2_cmd_server ${CMAKE_CURRENT_SOURCE_DIR}/libfairino/lib/libfairino.so.2.2.2)
+-# target_link_libraries(fairino_hardware ${CMAKE_CURRENT_SOURCE_DIR}/libfairino/lib/libfairino.so.2.2.2)
+-target_link_libraries(ros2_cmd_server "-Wl,-rpath,$ORIGIN" ${CMAKE_CURRENT_SOURCE_DIR}/libfairino/lib/libfairino.so.2.2.2)
+-target_link_libraries(fairino_hardware "-Wl,-rpath,$ORIGIN" ${CMAKE_CURRENT_SOURCE_DIR}/libfairino/lib/libfairino.so.2.2.2)
++# target_link_libraries(ros2_cmd_server ${CMAKE_CURRENT_SOURCE_DIR}/libfairino/lib/libfairino.so.2.2.6)
++# target_link_libraries(fairino_hardware ${CMAKE_CURRENT_SOURCE_DIR}/libfairino/lib/libfairino.so.2.2.6)
++if(BUILD_CMD_SERVER)
++target_link_libraries(ros2_cmd_server "-Wl,-rpath,$ORIGIN" ${CMAKE_CURRENT_SOURCE_DIR}/libfairino/lib/libfairino.so.2.2.6)
++endif()
++target_link_libraries(fairino_hardware "-Wl,-rpath,$ORIGIN" ${CMAKE_CURRENT_SOURCE_DIR}/libfairino/lib/libfairino.so.2.2.6)
+ 
+ #add dependencies
++if(BUILD_CMD_SERVER)
+ ament_target_dependencies(ros2_cmd_server rclcpp fairino_msgs)
+ ament_target_dependencies(srv_test_client rclcpp fairino_msgs)
++endif()
+ ament_target_dependencies(fairino_hardware 
+   hardware_interface
+   pluginlib
+@@ -82,6 +92,7 @@ pluginlib_export_plugin_description_file(hardware_interface fairino_hardware.xml
+ 
+ #install all files
+ #command server
++if(BUILD_CMD_SERVER)
+ install(TARGETS ros2_cmd_server
+   DESTINATION lib/${PROJECT_NAME}
+ )
+@@ -90,6 +101,7 @@ install(TARGETS ros2_cmd_server
+ install(TARGETS srv_test_client
+   DESTINATION lib/${PROJECT_NAME}
+ )
++endif()
+ 
+ #ros2_control hardware
+ install(TARGETS fairino_hardware
+@@ -103,12 +115,16 @@ file(MAKE_DIRECTORY
+ "${CMAKE_INSTALL_PREFIX}/lib/${PROJECT_NAME}"
+ )
+ 
+-file(COPY_FILE "libfairino/lib/libfairino.so.2.2.2" 
+-"${CMAKE_INSTALL_PREFIX}/lib/libfairino.so.2.2.2" 
++file(COPY_FILE "libfairino/lib/libfairino.so.2.2.6" 
++"${CMAKE_INSTALL_PREFIX}/lib/libfairino.so.2.2.6" 
+ )
++# 플러그인이 SONAME(libfairino.so.2)으로 찾으므로 링크 생성
++file(CREATE_LINK "libfairino.so.2.2.6"
++"${CMAKE_INSTALL_PREFIX}/lib/libfairino.so.2"
++SYMBOLIC)
+ 
+ # file(CREATE_LINK 
+-# "${CMAKE_INSTALL_PREFIX}/lib/libfairino.so.2.2.2" 
++# "${CMAKE_INSTALL_PREFIX}/lib/libfairino.so.2.2.6" 
+ # "${CMAKE_INSTALL_PREFIX}/lib/libfairino.so.2" 
+ # SYMBOLIC)
+ 
+diff --git a/fairino_hardware_v3_8_2_11/include/fairino_hardware/fairino_hardware_interface.hpp b/fairino_hardware_v3_8_2_11/include/fairino_hardware/fairino_hardware_interface.hpp
+index cd06d65..28eb485 100644
+--- a/fairino_hardware_v3_8_2_11/include/fairino_hardware/fairino_hardware_interface.hpp
++++ b/fairino_hardware_v3_8_2_11/include/fairino_hardware/fairino_hardware_interface.hpp
+@@ -60,6 +60,7 @@ private:
+   double _jnt_velocity_state[6];
+   double _jnt_torque_state[6];
+   int _control_mode;
++  int _servoj_fail_count = 0;  // 연속 ServoJ 실패 횟수 (임계 초과 시 ERROR 반환으로 하드웨어 정지)
+   std::string _controller_ip = CONTROLLER_IP_ADDRESS;
+   std::unique_ptr<FRRobot> _ptr_robot;
+ };
+diff --git a/fairino_hardware_v3_8_2_11/src/fairino_hardware_interface.cpp b/fairino_hardware_v3_8_2_11/src/fairino_hardware_interface.cpp
+index ca2d84f..03e3cdb 100644
+--- a/fairino_hardware_v3_8_2_11/src/fairino_hardware_interface.cpp
++++ b/fairino_hardware_v3_8_2_11/src/fairino_hardware_interface.cpp
+@@ -7,6 +7,12 @@ hardware_interface::CallbackReturn FairinoHardwareInterface::on_init(const hardw
+         return hardware_interface::CallbackReturn::ERROR;
+     }
+     info_ = sysinfo;//info_是父类中定义的变量
++    // ros2_control xacro의 <param name="controller_ip">로 IP 지정 가능 (없으면 기본값 유지)
++    auto ip_it = info_.hardware_parameters.find("controller_ip");
++    if (ip_it != info_.hardware_parameters.end() && !ip_it->second.empty()) {
++        _controller_ip = ip_it->second;
++    }
++    RCLCPP_INFO(rclcpp::get_logger("FairinoHardwareInterface"), "Controller IP: %s", _controller_ip.c_str());
+     
+     for (const hardware_interface::ComponentInfo& joint : info_.joints) {
+ 
+@@ -116,6 +122,7 @@ hardware_interface::CallbackReturn FairinoHardwareInterface::on_activate(const r
+         _jnt_velocity_state[i] = 0;
+         _jnt_torque_state[i] = 0;
+     }
++    _servoj_fail_count = 0;
+     _control_mode = 0;//默认是位置控制,0-位置控制，1-扭矩控制 2-速度控制
+     errno_t returncode = _ptr_robot->RPC(_controller_ip.c_str());//建立xmlrpc连接
+     rclcpp::sleep_for(200ms);//等待一段时间让控制器的rpc连接建立完毕
+@@ -182,7 +189,7 @@ hardware_interface::return_type FairinoHardwareInterface::read(const rclcpp::Tim
+ hardware_interface::return_type FairinoHardwareInterface::write(const rclcpp::Time& time,const rclcpp::Duration& period)
+ {
+     if(_control_mode == 0){//位置控制模式
+-        if (std::any_of(&_jnt_position_command[0], &_jnt_position_command[5],\
++        if (std::any_of(&_jnt_position_command[0], &_jnt_position_command[6],\
+             [](double c) { return not std::isfinite(c); })) {
+             return hardware_interface::return_type::ERROR;
+         }
+@@ -196,9 +203,17 @@ hardware_interface::return_type FairinoHardwareInterface::write(const rclcpp::Ti
+         int returncode = _ptr_robot->ServoJ(&cmd,&extcmd,0,0,0.008,0,0);
+         if(returncode != 0){
+             RCLCPP_INFO(rclcpp::get_logger("FairinoHardwareInterface"), "ServoJ指令下发错误,错误码:%d",returncode);
++            // 거부된 ServoJ를 계속 보내지 않도록 연속 실패 시 하드웨어를 정지시킨다 (125Hz 기준 약 0.2초)
++            if(++_servoj_fail_count >= 25){
++                RCLCPP_ERROR(rclcpp::get_logger("FairinoHardwareInterface"),
++                    "ServoJ failed %d times in a row (last code %d). Stopping hardware.", _servoj_fail_count, returncode);
++                return hardware_interface::return_type::ERROR;
++            }
++        }else{
++            _servoj_fail_count = 0;
+         }
+     }else if(_control_mode == 1){//扭矩控制模式
+-        if (std::any_of(&_jnt_torque_command[0], &_jnt_torque_command[5],\
++        if (std::any_of(&_jnt_torque_command[0], &_jnt_torque_command[6],\
+             [](double c) { return not std::isfinite(c); })) {
+             return hardware_interface::return_type::ERROR;
+         }
